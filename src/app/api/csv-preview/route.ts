@@ -3,6 +3,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 
+export const maxDuration = 300;
+
 interface Record {
   Client: string;
   Warehouse: string;
