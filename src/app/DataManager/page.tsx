@@ -40,7 +40,7 @@ const HomePage: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const data = await api.fetchEntries();
+      const data = await api.fetchEntries(1); // Hier fügen wir die Seitennummer hinzu
       setEntries(data.reverse());
     } catch (err: any) {
       console.error(err);
