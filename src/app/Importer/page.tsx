@@ -11,7 +11,10 @@ export default function IndexPage() {
           <Link href="/Data2">DATA MANAGER</Link>
         </Button>
         <Button asChild>
-          <Link href="/DataManager">DATABASE</Link>
+          <Link href="/DataManager">serverless DATABASE</Link>
+        </Button>
+        <Button asChild>
+          <Link href="/Redis">Self hosted REDIS DB</Link>
         </Button>
       </div>
       <TricksTable />
