@@ -16,13 +16,9 @@ export function SiteHeader() {
           </span>
         </Link>
         <nav className="flex flex-1 items-center space-x-4 md:justify-start">
-          <Link href="/chat" className="flex items-center space-x-2 text-sm font-medium">
+          <Link href="/ChatSelect" className="flex items-center space-x-2 text-sm font-medium">
             <ChatBubbleIcon className="size-4" />
             <span>Chat</span>
-          </Link>
-          <Link href="/chat2" className="flex items-center space-x-2 text-sm font-medium">
-            <ChatBubbleIcon className="size-4" />
-            <span>Chat Advanced</span>
           </Link>
           <Link href="/Predict" className="flex items-center space-x-2 text-sm font-medium">
             <RocketIcon className="size-4" />
