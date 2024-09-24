@@ -17,9 +17,9 @@ export default function Home() {
 
   const suggestedActions = [
     {
-      title: "How many 'r's",
-      label: "are in the word strawberry?",
-      action: "How many 'r's are in the word strawberry?",
+      title: "Analyze Sales Trends",
+      label: "Identify trends in sales over time.",
+      action: "Analyze the sales trends in the provided dataset.",
     },
   ];
 
