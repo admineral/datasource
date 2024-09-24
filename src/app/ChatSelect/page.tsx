@@ -13,12 +13,12 @@ export default function Home() {
     { 
       title: "Chat Version 2", 
       link: "/chat2",
-      description: "Chat with a function call connected to Recharts."
+      description: "Assistant Chat with a function call connected to Recharts."
     },
     { 
       title: "Chat Version 3", 
       link: "/o1",
-      description: "Reasoning with 4.0."
+      description: "Reasoning with gpt4o"
     },
   ];
 
