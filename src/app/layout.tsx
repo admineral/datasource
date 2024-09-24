@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     template: `%s - ${siteConfig.name}`,
   },
   description: siteConfig.description,
-  keywords: ["nextjs", "react", "importer", "csv-importer"],
+  keywords: ["nextjs", "react", "importer", "datasource"],
   authors: [
     {
       name: "admineral",

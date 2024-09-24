@@ -3,6 +3,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 
+export const dynamic = 'force-dynamic';
+
 export const maxDuration = 300;
 
 interface Record {
@@ -34,7 +36,7 @@ const cache: { [key: string]: CacheEntry } = {};
 const CACHE_DURATION = 60 * 60 * 1000; // 5 minutes in milliseconds
 
 export async function GET(request: NextRequest) {
-  try {
+  if (process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_ENV === 'production') {
     const searchParams = request.nextUrl.searchParams;
     const files = searchParams.get('files')?.split(',') || [];
     const warehouse = searchParams.get('warehouse');
@@ -125,9 +127,8 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(processedData);
-  } catch (error: unknown) {
-    console.error('Error in CSV preview route:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json({ error: `Failed to process CSV file(s): ${errorMessage}` }, { status: 500 });
+  } else {
+    // Return a mock response during build time
+    return NextResponse.json({ preview: [], totalRecords: 0, headers: [] });
   }
 }

@@ -26,7 +26,7 @@ export function SiteHeader() {
           </Link>
           <Link href="/Importer" className="flex items-center space-x-2 text-sm font-medium">
             <TableIcon className="size-4" />
-            <span>Import CSV</span>
+            <span>Data</span>
           </Link>
         </nav>
         <nav className="flex items-center space-x-2">

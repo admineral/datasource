@@ -1,6 +1,6 @@
 {
-  "name": "CSV Importer",
-  "short_name": "CSV Importer",
+  "name": "Datasource Dashboard",
+  "short_name": "Datasource Dashboard",
   "icons": [
     {
       "src": "/icon.png",

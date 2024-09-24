@@ -6,11 +6,15 @@ import ChallengeOverview from './components/Landingpage/ChallengeOverview';
 import DataInsights from './components/Landingpage/components/DataInsights';
 import Footer from './components/Landingpage/Footer';
 import { DashboardProvider } from './components/Landingpage/components/DashboardContext';
+import Badge from './components/Landingpage/Badge';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <main className="p-4 md:p-10 mx-auto max-w-7xl">
+    <div className="relative min-h-screen bg-gray-900 text-white">
+      <div className="absolute right-4 top-4">
+        <Badge />
+      </div>
+      <main className="mx-auto max-w-7xl p-4 md:p-10">
         <Header />
         <ChallengeOverview />
         <DashboardProvider>

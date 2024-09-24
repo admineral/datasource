@@ -8,13 +8,10 @@ export default function IndexPage() {
     <Shell>
       <div className="flex justify-center space-x-4 mb-6">
         <Button asChild>
-          <Link href="/Data2">DATA MANAGER</Link>
+          <Link href="/Data2">CSV MANAGER</Link>
         </Button>
         <Button asChild>
-          <Link href="/DataManager">serverless DATABASE</Link>
-        </Button>
-        <Button asChild>
-          <Link href="/Redis">Self hosted REDIS DB</Link>
+          <Link href="/Database">DATABASE</Link>
         </Button>
       </div>
       <TricksTable />
