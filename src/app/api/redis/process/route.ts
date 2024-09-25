@@ -59,13 +59,14 @@ async function streamCSVs(sendProgress: (message: string) => void) {
 
   let combinedBatch: Record<string, any> = {};
   let totalProcessed = 0;
+  let batchCount = 0;
 
   const salesParser = createReadStream(salesPath).pipe(parse({ columns: true }));
   const priceParser = createReadStream(pricePath).pipe(parse({ columns: true }));
 
   console.log('CSV parsers created');
 
-  const processCombinedRow = async (row: any, type: 'sales' | 'price') => {
+  const processRow = (row: any, type: 'sales' | 'price') => {
     const { Client, Warehouse, Product, ...dates } = row;
     const key = `${Client}:${Warehouse}:${Product}`;
 
@@ -81,34 +82,46 @@ async function streamCSVs(sendProgress: (message: string) => void) {
 
     totalProcessed++;
 
-    if (Object.keys(combinedBatch).length >= BATCH_SIZE) {
-      console.log(`Batch size reached. Processing ${Object.keys(combinedBatch).length} items`);
-      await processBatch(combinedBatch, sendProgress);
-      combinedBatch = {};
+    if (totalProcessed % 10000 === 0) {
       sendProgress(`Processed ${totalProcessed} rows`);
     }
+
+    if (Object.keys(combinedBatch).length >= BATCH_SIZE) {
+      return true; // Indicate batch is ready for processing
+    }
+    return false;
+  };
+
+  const processBatchAndReset = async () => {
+    await processBatch(combinedBatch, sendProgress);
+    batchCount++;
+    sendProgress(`Processed and uploaded batch ${batchCount}. Total rows: ${totalProcessed}`);
+    combinedBatch = {};
   };
 
   console.log('Starting to process Sales CSV');
   for await (const row of salesParser) {
-    await processCombinedRow(row, 'sales');
+    if (processRow(row, 'sales')) {
+      await processBatchAndReset();
+    }
   }
   console.log('Finished processing Sales CSV');
 
   console.log('Starting to process Price CSV');
   for await (const row of priceParser) {
-    await processCombinedRow(row, 'price');
+    if (processRow(row, 'price')) {
+      await processBatchAndReset();
+    }
   }
   console.log('Finished processing Price CSV');
 
   // Process any remaining data
   if (Object.keys(combinedBatch).length > 0) {
-    console.log(`Processing remaining ${Object.keys(combinedBatch).length} items`);
-    await processBatch(combinedBatch, sendProgress);
+    await processBatchAndReset();
   }
 
   console.log(`Total rows processed: ${totalProcessed}`);
-  sendProgress(`Finished processing ${totalProcessed} total rows`);
+  sendProgress(`Finished processing ${totalProcessed} total rows in ${batchCount} batches`);
 }
 
 // GET handler

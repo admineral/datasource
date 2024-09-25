@@ -84,22 +84,26 @@ const ProcessCSV: React.FC = () => {
   const handleEventMessage = (message: string, eventSource: EventSource) => {
     setProgress(message);
 
-    if (message.startsWith('Processed batch')) {
-      const matches = message.match(/Processed batch (\d+) of (\d+)/);
+    if (message.includes('Processed and uploaded batch')) {
+      const matches = message.match(/Processed and uploaded batch (\d+)\. Total rows: (\d+)/);
       if (matches) {
         const processed = parseInt(matches[1], 10);
-        const total = parseInt(matches[2], 10);
         setProcessedBatches(processed);
-        setTotalBatches(total);
       }
     }
 
-    if (message.includes('Successfully processed')) {
+    if (message.includes('Finished processing')) {
+      const matches = message.match(/Finished processing (\d+) total rows in (\d+) batches/);
+      if (matches) {
+        const totalRows = parseInt(matches[1], 10);
+        const totalBatches = parseInt(matches[2], 10);
+        setTotalBatches(totalBatches);
+        setProcessedBatches(totalBatches);  // All batches are processed at this point
+      }
       setUploadStatus('success');
       toast.success('CSV files processed and data stored in Redis');
       eventSource.close();
       setUploading(false);
-      resetUI();
     }
 
     if (message.startsWith('Error processing')) {
