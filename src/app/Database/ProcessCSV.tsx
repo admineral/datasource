@@ -39,67 +39,73 @@ const ProcessCSV: React.FC = () => {
     setProcessedBatches(0);
 
     try {
-      const eventSource = new EventSource('/api/redis/process');
+      const response = await fetch('/api/redis/process');
+      const contentType = response.headers.get('Content-Type');
 
-      eventSource.onmessage = (event) => {
-        const message = event.data;
-
-        // Attempt to parse the message as JSON
-        try {
-          const data = JSON.parse(message);
-          if (data.message) {
-            // Handle mock response
-            toast.info(data.message);
-            eventSource.close();
-            setUploading(false);
-            resetUI();
-            return;
-          }
-        } catch (err) {
-          // Not a JSON message, proceed as normal
-        }
-
-        setProgress(message);
-
-        if (message.startsWith('Processed batch')) {
-          const matches = message.match(/Processed batch (\d+) of (\d+)/);
-          if (matches) {
-            const processed = parseInt(matches[1], 10);
-            const total = parseInt(matches[2], 10);
-            setProcessedBatches(processed);
-            setTotalBatches(total);
-          }
-        }
-
-        if (message.includes('Successfully processed')) {
-          setUploadStatus('success');
-          toast.success('CSV files processed and data stored in Redis');
-          eventSource.close();
+      if (contentType?.includes('application/json')) {
+        // Handle JSON response
+        const data = await response.json();
+        if (data.message) {
+          toast.info(data.message);
           setUploading(false);
           resetUI();
+          return;
         }
+      } else if (contentType?.includes('text/event-stream')) {
+        // Handle SSE
+        const eventSource = new EventSource('/api/redis/process');
 
-        if (message.startsWith('Error processing')) {
+        eventSource.onmessage = (event) => {
+          const message = event.data;
+          handleEventMessage(message, eventSource);
+        };
+
+        eventSource.onerror = (error) => {
+          console.error('EventSource failed:', error);
           setUploadStatus('error');
           toast.error('An error occurred while processing CSV files');
           eventSource.close();
           setUploading(false);
-        }
-      };
+        };
 
-      eventSource.onerror = (error) => {
-        setUploadStatus('error');
-        toast.error('An error occurred while processing CSV files');
-        eventSource.close();
-        setUploading(false);
-      };
-
-      eventSource.onopen = () => {
-        console.log('Connection to server opened.');
-      };
+        eventSource.onopen = () => {
+          console.log('Connection to server opened.');
+        };
+      } else {
+        throw new Error('Unexpected response type');
+      }
     } catch (error: any) {
       setUploadStatus('error');
       toast.error(error.message || 'An unexpected error occurred');
+      setUploading(false);
+    }
+  };
+
+  const handleEventMessage = (message: string, eventSource: EventSource) => {
+    setProgress(message);
+
+    if (message.startsWith('Processed batch')) {
+      const matches = message.match(/Processed batch (\d+) of (\d+)/);
+      if (matches) {
+        const processed = parseInt(matches[1], 10);
+        const total = parseInt(matches[2], 10);
+        setProcessedBatches(processed);
+        setTotalBatches(total);
+      }
+    }
+
+    if (message.includes('Successfully processed')) {
+      setUploadStatus('success');
+      toast.success('CSV files processed and data stored in Redis');
+      eventSource.close();
+      setUploading(false);
+      resetUI();
+    }
+
+    if (message.startsWith('Error processing')) {
+      setUploadStatus('error');
+      toast.error('An error occurred while processing CSV files');
+      eventSource.close();
       setUploading(false);
     }
   };
