@@ -1,6 +1,6 @@
 // /app/api/redis/process/route.ts
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import Redis from 'ioredis';
 import { z } from 'zod';
 import { createReadStream } from 'fs';
@@ -8,7 +8,9 @@ import csv from 'csv-parser';
 import path from 'path';
 import { ReadableStream } from 'web-streams-polyfill';
 
+export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+
 
 // Define environment variable schema
 const envSchema = z.object({
@@ -167,58 +169,39 @@ const processCSVFiles = async (sendProgress: (message: string) => void) => {
 // GET handler to initiate CSV processing and stream progress via SSE
 export async function GET(request: NextRequest) {
   // Check if we're in build mode
-  if (env.NEXT_PUBLIC_IS_BUILD === 'true') {
+  if (process.env.NEXT_PUBLIC_IS_BUILD === 'true') {
     // Return a mock response during build time
-    return new Response(JSON.stringify({ message: 'CSV processing is not available during build time' }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200,
-    });
+    return NextResponse.json({ message: 'CSV processing is not available during build time' });
   }
 
   // Proceed with CSV processing only if not in build mode
-  if (
-    process.env.NODE_ENV === 'development' ||
-    process.env.VERCEL_ENV === 'preview' ||
-    process.env.VERCEL_ENV === 'production'
-  ) {
-    // Create a ReadableStream using web-streams-polyfill
-    const stream = new ReadableStream({
-      start(controller) {
-        // Function to send progress messages to the client
-        const sendProgress = (message: string) => {
-          controller.enqueue(`data: ${message}\n\n`);
-        };
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendProgress = (message: string) => {
+        controller.enqueue(`data: ${message}\n\n`);
+      };
 
-        // Start processing CSV files asynchronously
-        processCSVFiles(sendProgress)
-          .then(() => {
-            controller.enqueue(`data: Successfully processed CSV files and stored data in Redis\n\n`);
-            controller.close();
-          })
-          .catch((error) => {
-            console.error('Error processing CSV files:', error);
-            if (error instanceof Error) {
-              controller.enqueue(`data: Error processing CSV files: ${error.message}\n\n`);
-            } else {
-              controller.enqueue(`data: Error processing CSV files: Unknown error\n\n`);
-            }
-            controller.close();
-          });
-      },
-    });
+      try {
+        await processCSVFiles(sendProgress);
+        controller.enqueue(`data: Successfully processed CSV files and stored data in Redis\n\n`);
+      } catch (error) {
+        console.error('Error processing CSV files:', error);
+        if (error instanceof Error) {
+          controller.enqueue(`data: Error processing CSV files: ${error.message}\n\n`);
+        } else {
+          controller.enqueue(`data: Error processing CSV files: Unknown error\n\n`);
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    });
-  } else {
-    // Fallback response if not in recognized environment
-    return new Response(JSON.stringify({ message: 'CSV processing is not available in this environment' }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200,
-    });
-  }
+  return new NextResponse(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }
