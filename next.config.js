@@ -5,6 +5,22 @@
 await import("./src/env.js");
 
 /** @type {import("next").NextConfig} */
-const config = {};
+const config = {
+  reactStrictMode: true,
+  // Die 'appDir' Option ist nicht mehr nötig, da sie jetzt standardmäßig aktiviert ist
+  async headers() {
+    return [
+      {
+        source: '/api/redis/process',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store, max-age=0',
+          },
+        ],
+      },
+    ];
+  },
+};
 
 export default config;

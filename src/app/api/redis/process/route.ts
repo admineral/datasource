@@ -1,5 +1,3 @@
-// /app/api/redis/process/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import Redis from 'ioredis';
 import { z } from 'zod';
@@ -169,7 +167,7 @@ const processCSVFiles = async (sendProgress: (message: string) => void) => {
 // GET handler to initiate CSV processing and stream progress via SSE
 export async function GET(request: NextRequest) {
   // Check if we're in build mode
-  if (process.env.NEXT_PUBLIC_IS_BUILD === 'true') {
+  if (env.NEXT_PUBLIC_IS_BUILD === 'true') {
     // Return a mock response during build time
     return NextResponse.json({ message: 'CSV processing is not available during build time' });
   }
