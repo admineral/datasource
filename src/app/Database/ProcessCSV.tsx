@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { FaCloudUploadAlt, FaCheckCircle, FaTimesCircle, FaSpinner, FaTrashAlt } from 'react-icons/fa';
@@ -170,19 +170,20 @@ const ProcessCSV: React.FC = () => {
           <div className="overflow-x-auto rounded-md bg-gray-100 p-2 dark:bg-gray-700">
             <div>{progress}</div>
           </div>
-          {totalBatches > 0 && (
+          {processedBatches > 0 && (
             <div className="mt-4">
               <h4 className="text-md mb-1 font-semibold">Total Progress:</h4>
               <div className="relative h-4 w-3/4 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600">
                 <div
                   className="h-4 rounded-full bg-blue-600 transition-all duration-500 ease-in-out"
-                  style={{ width: `${(processedBatches / totalBatches) * 100}%` }}
+                  style={{ width: `${(processedBatches / (totalBatches || 1)) * 100}%` }}
                 >
                   <div className="absolute left-0 top-0 h-4 w-full animate-pulse bg-blue-800 opacity-25"></div>
                 </div>
               </div>
               <p className="mt-2 text-sm">
-                {processedBatches} of {totalBatches} batches processed
+                {processedBatches} batches processed
+                {totalBatches > 0 && ` of ${totalBatches} total batches`}
               </p>
             </div>
           )}

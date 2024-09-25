@@ -81,43 +81,43 @@ async function streamCSVs(sendProgress: (message: string) => void) {
     }
 
     totalProcessed++;
+  };
+
+  console.log('Starting to process Sales and Price CSVs');
+  let salesDone = false;
+  let priceDone = false;
+  let salesIter = salesParser[Symbol.asyncIterator]();
+  let priceIter = priceParser[Symbol.asyncIterator]();
+
+  while (!salesDone || !priceDone) {
+    if (!salesDone) {
+      const { value: salesRow, done: salesFinished } = await salesIter.next();
+      if (salesFinished) {
+        salesDone = true;
+      } else {
+        processRow(salesRow, 'sales');
+      }
+    }
+
+    if (!priceDone) {
+      const { value: priceRow, done: priceFinished } = await priceIter.next();
+      if (priceFinished) {
+        priceDone = true;
+      } else {
+        processRow(priceRow, 'price');
+      }
+    }
+
+    if (Object.keys(combinedBatch).length >= BATCH_SIZE || (salesDone && priceDone)) {
+      await processBatch(combinedBatch, sendProgress);
+      batchCount++;
+      sendProgress(`Processed and uploaded batch ${batchCount}. Total rows: ${totalProcessed}`);
+      combinedBatch = {};
+    }
 
     if (totalProcessed % 10000 === 0) {
       sendProgress(`Processed ${totalProcessed} rows`);
     }
-
-    if (Object.keys(combinedBatch).length >= BATCH_SIZE) {
-      return true; // Indicate batch is ready for processing
-    }
-    return false;
-  };
-
-  const processBatchAndReset = async () => {
-    await processBatch(combinedBatch, sendProgress);
-    batchCount++;
-    sendProgress(`Processed and uploaded batch ${batchCount}. Total rows: ${totalProcessed}`);
-    combinedBatch = {};
-  };
-
-  console.log('Starting to process Sales CSV');
-  for await (const row of salesParser) {
-    if (processRow(row, 'sales')) {
-      await processBatchAndReset();
-    }
-  }
-  console.log('Finished processing Sales CSV');
-
-  console.log('Starting to process Price CSV');
-  for await (const row of priceParser) {
-    if (processRow(row, 'price')) {
-      await processBatchAndReset();
-    }
-  }
-  console.log('Finished processing Price CSV');
-
-  // Process any remaining data
-  if (Object.keys(combinedBatch).length > 0) {
-    await processBatchAndReset();
   }
 
   console.log(`Total rows processed: ${totalProcessed}`);
