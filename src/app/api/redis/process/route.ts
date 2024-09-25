@@ -4,11 +4,10 @@ import { z } from 'zod';
 import { createReadStream } from 'fs';
 import csv from 'csv-parser';
 import path from 'path';
-import { ReadableStream } from 'web-streams-polyfill';
+import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
-
 
 // Define environment variable schema
 const envSchema = z.object({
@@ -25,144 +24,68 @@ const redis = new Redis(env.REDIS_URL, {
   password: env.REDIS_PASSWORD,
 });
 
-// Handle Redis connection events
-redis.on('error', (error) => {
-  console.error('Redis connection error:', error);
-});
+// Function to process a single row
+async function processRow(row: any, type: 'sales' | 'price') {
+  const { Client, Warehouse, Product, ...dates } = row;
+  const key = `${Client}:${Warehouse}:${Product}`;
 
-redis.on('connect', () => {
-  console.log('Successfully connected to Redis');
-});
+  const pipeline = redis.pipeline();
 
-// Function to ensure Redis is connected
-const connectRedis = async () => {
-  if (redis.status === 'end' || redis.status === 'reconnecting') {
-    await redis.connect();
+  for (const [date, value] of Object.entries(dates)) {
+    if (value !== undefined) {
+      pipeline.hset(key, `${type}:${date}`, String(value));
+    }
   }
-};
 
-// Function to parse and combine CSV data
-const parseAndCombineCSV = async (
-  salesFilePath: string,
-  priceFilePath: string,
-  sendProgress: (message: string) => void
-) => {
-  console.log(`Starting to process CSV files: ${salesFilePath} and ${priceFilePath}`);
-  await connectRedis();
+  // Create secondary indexes
+  pipeline.sadd(`index:client:${Client}`, key);
+  pipeline.sadd(`index:warehouse:${Warehouse}`, key);
+  pipeline.sadd(`index:product:${Product}`, key);
 
-  return new Promise<void>((resolve, reject) => {
-    const salesResults: any[] = [];
-    const priceResults: any[] = [];
-    const batchSize = 1000; // Adjust batch size as needed
-    let batchCount = 0;
+  await pipeline.exec();
+}
 
-    const readCSV = (filePath: string, results: any[]) => {
-      return new Promise<void>((resolve, reject) => {
-        createReadStream(filePath)
-          .pipe(csv())
-          .on('data', (data) => results.push(data))
-          .on('end', () => resolve())
-          .on('error', (error) => reject(error));
-      });
-    };
-
-    Promise.all([
-      readCSV(salesFilePath, salesResults),
-      readCSV(priceFilePath, priceResults),
-    ])
-      .then(async () => {
-        console.log(`Finished reading CSV files. Processing data...`);
+// Function to stream and process a CSV file
+function streamCSV(filePath: string, type: 'sales' | 'price', sendProgress: (message: string) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let rowCount = 0;
+    createReadStream(filePath)
+      .pipe(csv())
+      .on('data', async (row) => {
         try {
-          const combinedResults = new Map();
-
-          // Combine sales data
-          for (const row of salesResults) {
-            const { Client, Warehouse, Product, ...dates } = row;
-            const key = `${Client}:${Warehouse}:${Product}`;
-            if (!combinedResults.has(key)) {
-              combinedResults.set(key, { sales: {}, price: {} });
-            }
-            for (const [date, value] of Object.entries(dates)) {
-              if (value !== undefined) {
-                combinedResults.get(key).sales[date] = String(value);
-              }
-            }
+          await processRow(row, type);
+          rowCount++;
+          if (rowCount % 1000 === 0) {
+            sendProgress(`Processed ${rowCount} rows from ${type} file`);
           }
-
-          // Combine price data
-          for (const row of priceResults) {
-            const { Client, Warehouse, Product, ...dates } = row;
-            const key = `${Client}:${Warehouse}:${Product}`;
-            if (!combinedResults.has(key)) {
-              combinedResults.set(key, { sales: {}, price: {} });
-            }
-            for (const [date, value] of Object.entries(dates)) {
-              if (value !== undefined) {
-                combinedResults.get(key).price[date] = String(value);
-              }
-            }
-          }
-
-          const totalBatches = Math.ceil(combinedResults.size / batchSize);
-          const entries = Array.from(combinedResults.entries());
-
-          for (let i = 0; i < entries.length; i += batchSize) {
-            const batch = entries.slice(i, i + batchSize);
-            const pipeline = redis.pipeline();
-
-            for (const [key, data] of batch) {
-              const [client, warehouse, product] = key.split(':');
-
-              // Store the combined data
-              for (const [date, value] of Object.entries(data.sales)) {
-                pipeline.hset(key, `sales:${date}`, value as string);
-              }
-              for (const [date, value] of Object.entries(data.price)) {
-                pipeline.hset(key, `price:${date}`, value as string);
-              }
-
-              // Create secondary indexes
-              pipeline.sadd(`index:client:${client}`, key);
-              pipeline.sadd(`index:warehouse:${warehouse}`, key);
-              pipeline.sadd(`index:product:${product}`, key);
-            }
-
-            await pipeline.exec();
-            batchCount++;
-            const progressMessage = `Processed batch ${batchCount} of ${totalBatches}`;
-            console.log(progressMessage);
-            sendProgress(progressMessage);
-          }
-
-          console.log(`Successfully processed and stored combined data from CSV files`);
-          resolve();
         } catch (error) {
-          console.error(`Error processing combined data from CSV files`, error);
           reject(error);
         }
       })
-      .catch((error) => {
-        console.error(`Error reading CSV files`, error);
-        reject(error);
-      });
+      .on('end', () => {
+        sendProgress(`Finished processing ${rowCount} rows from ${type} file`);
+        resolve();
+      })
+      .on('error', (error) => reject(error));
   });
-};
+}
 
 // Function to process all CSV files
-const processCSVFiles = async (sendProgress: (message: string) => void) => {
+async function processCSVFiles(sendProgress: (message: string) => void) {
   const dataDir = path.join(process.cwd(), 'public', 'data');
-  console.log(`Starting to process all CSV files in directory: ${dataDir}`);
-  sendProgress(`Starting to process all CSV files in directory: ${dataDir}`);
+  sendProgress(`Starting to process CSV files in directory: ${dataDir}`);
 
-  await parseAndCombineCSV(
-    path.join(dataDir, 'Sales.csv'),
-    path.join(dataDir, 'Price.csv'),
-    sendProgress
-  );
-
-  console.log('Finished processing all CSV files');
-  sendProgress('Finished processing all CSV files');
-};
+  try {
+    await Promise.all([
+      streamCSV(path.join(dataDir, 'Sales.csv'), 'sales', sendProgress),
+      streamCSV(path.join(dataDir, 'Price.csv'), 'price', sendProgress)
+    ]);
+    sendProgress('Finished processing all CSV files');
+  } catch (error) {
+    console.error('Error processing CSV files:', error);
+    sendProgress(`Error processing CSV files: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 // GET handler to initiate CSV processing and stream progress via SSE
 export async function GET(request: NextRequest) {
