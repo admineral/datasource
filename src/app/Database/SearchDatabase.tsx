@@ -14,7 +14,7 @@ import {
   VisibilityState,
 } from "@tanstack/react-table";
 import { ArrowUpDown, ChevronDown, MoreHorizontal } from "lucide-react";
-import { FaSearch } from "react-icons/fa";
+import { FaSearch, FaTrashAlt } from "react-icons/fa";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DataTableColumnHeader } from "./components/AdvancedDataTable/DataTableColumnHeader"; // Ensure this path is correct
+import { DataTableColumnHeader } from "./components/AdvancedDataTable/DataTableColumnHeader";
 
 // Define the Payment type based on your data structure
 export type Payment = {
@@ -124,11 +124,26 @@ export const columns: ColumnDef<Payment>[] = [
   },
 ];
 
-// Main Component
-const SearchDatabase: React.FC = () => {
-  const [clients, setClients] = useState<string[]>([]);
-  const [warehouses, setWarehouses] = useState<string[]>([]);
-  const [products, setProducts] = useState<string[]>([]);
+// New: Interface for component props
+interface SearchDatabaseProps {
+  options: {
+    clients: string[];
+    warehouses: string[];
+    products: string[];
+  };
+  updateOptions: (newOptions: {
+    clients: string[];
+    warehouses: string[];
+    products: string[];
+  }) => void;
+  clearOptions: () => void;
+}
+
+// Updated: Component definition to accept props
+const SearchDatabase: React.FC<SearchDatabaseProps> = ({ options, updateOptions, clearOptions }) => {
+  // Updated: Use options from props instead of state
+  const { clients, warehouses, products } = options;
+
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>("");
   const [selectedProduct, setSelectedProduct] = useState<string>("");
@@ -142,24 +157,25 @@ const SearchDatabase: React.FC = () => {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState({});
 
-  useEffect(() => {
-    // Fetch available clients, warehouses, and products from the database
-    const fetchOptions = async () => {
-      try {
-        const response = await fetch("/api/redis/options");
-        if (!response.ok) {
-          throw new Error("Failed to fetch options");
-        }
-        const data = await response.json();
-        setClients(data.clients);
-        setWarehouses(data.warehouses);
-        setProducts(data.products);
-      } catch (error: any) {
-        console.error("Error fetching options:", error);
-        toast.error(error.message || "Failed to fetch options");
-      }
-    };
+  const [showModal, setShowModal] = useState<boolean>(false);
 
+  // Updated: fetchOptions now uses updateOptions
+  const fetchOptions = async () => {
+    try {
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/redis/options?t=${timestamp}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch options');
+      }
+      const data = await response.json();
+      updateOptions(data);
+    } catch (error: any) {
+      console.error('Error fetching options:', error);
+      toast.error(error.message || 'Failed to fetch options');
+    }
+  };
+
+  useEffect(() => {
     fetchOptions();
   }, []);
 
@@ -256,6 +272,25 @@ const SearchDatabase: React.FC = () => {
     debugTable: false,
   });
 
+  // Updated: handleCleanDatabase now uses clearOptions prop
+  const handleCleanDatabase = async () => {
+    try {
+      const response = await fetch('/api/redis', { method: 'DELETE' });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Network response was not ok');
+      }
+      toast.success('Database cleaned successfully');
+      clearOptions();
+      await fetchOptions(); // Re-fetch options (which should now be empty)
+    } catch (error: any) {
+      console.error('Clean database error:', error);
+      toast.error(error.message || 'Failed to clean the database');
+    } finally {
+      setShowModal(false);
+    }
+  };
+
   return (
     <div className="rounded-md bg-white p-6 dark:bg-gray-800">
       <h2 className="mb-6 text-2xl font-semibold">Search in Database</h2>
@@ -315,6 +350,15 @@ const SearchDatabase: React.FC = () => {
         >
           <FaSearch />
           <span>{isSearching ? "Searching..." : "Search"}</span>
+        </Button>
+        {/* New Clean Database button */}
+        <Button
+          onClick={() => setShowModal(true)}
+          variant="default"
+          className="flex items-center space-x-2 text-red-600"
+        >
+          <FaTrashAlt />
+          <span>Clean Database</span>
         </Button>
       </div>
 
@@ -429,6 +473,24 @@ const SearchDatabase: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* New Confirmation Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="rounded-md bg-white p-6 dark:bg-gray-800">
+            <h3 className="mb-4 text-lg font-semibold">Confirm Database Cleaning</h3>
+            <p>Are you sure you want to clean the database? This action cannot be undone.</p>
+            <div className="mt-6 flex justify-end space-x-4">
+              <Button onClick={handleCleanDatabase} variant="default" className="bg-red-500 text-white">
+                Yes, Clean
+              </Button>
+              <Button onClick={() => setShowModal(false)} variant="default">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

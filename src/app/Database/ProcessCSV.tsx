@@ -1,82 +1,99 @@
+// File: components/ProcessCSV.tsx
+
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { FaCloudUploadAlt, FaCheckCircle, FaTimesCircle, FaSpinner, FaTrashAlt } from 'react-icons/fa';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  FaCloudUploadAlt,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaSpinner,
+  FaTrashAlt,
+  FaList,
+  FaChartBar,
+} from 'react-icons/fa';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
-const ProcessCSV: React.FC = () => {
+interface ProcessCSVProps {
+  clearOptions: () => void;
+}
+
+const ProcessCSV: React.FC<ProcessCSVProps> = ({ clearOptions }) => {
   const [uploading, setUploading] = useState<boolean>(false);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [progress, setProgress] = useState<string>('');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
+    'idle'
+  );
+  const [currentLog, setCurrentLog] = useState<string>('');
+  const [logs, setLogs] = useState<string[]>([]);
   const [totalBatches, setTotalBatches] = useState<number>(0);
   const [processedBatches, setProcessedBatches] = useState<number>(0);
   const [showModal, setShowModal] = useState<boolean>(false);
-  const [estimatedTotalBatches, setEstimatedTotalBatches] = useState<number>(0);
-
-  // New state to track if we're in the browser
   const [isBrowser, setIsBrowser] = useState(false);
+  const [showLogs, setShowLogs] = useState<boolean>(false);
+  const [progress, setProgress] = useState<number>(0);
+  const [totalRows, setTotalRows] = useState<number>(0);
+  const [processedRows, setProcessedRows] = useState<number>(0);
 
-  // Use useEffect to set isBrowser to true after component mounts
+  const eventSourceRef = useRef<EventSource | null>(null);
+
   useEffect(() => {
     setIsBrowser(true);
+
+    // Cleanup EventSource on component unmount
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
   }, []);
 
   const resetUI = () => {
     setUploading(false);
     setUploadStatus('idle');
-    setProgress('');
+    setCurrentLog('');
+    setLogs([]);
     setTotalBatches(0);
     setProcessedBatches(0);
-    setEstimatedTotalBatches(0);
+    setProgress(0);
+    setTotalRows(0);
+    setProcessedRows(0);
   };
 
-  const handleUpload = async () => {
-    if (!isBrowser) return; // Prevent execution during SSR
+  const handleUpload = () => {
+    if (!isBrowser) return;
 
     setUploading(true);
     setUploadStatus('loading');
-    setProgress('');
+    setCurrentLog('');
+    setLogs([]);
     setTotalBatches(0);
     setProcessedBatches(0);
-    setEstimatedTotalBatches(0);
+    setProgress(0);
+    setTotalRows(0);
+    setProcessedRows(0);
 
     try {
-      const response = await fetch('/api/redis/process');
-      const contentType = response.headers.get('Content-Type');
+      // Open EventSource to start processing
+      const eventSource = new EventSource('/api/redis/process');
+      eventSourceRef.current = eventSource;
 
-      if (contentType?.includes('application/json')) {
-        // Handle JSON response (build time or unsupported environment)
-        const data = await response.json();
-        if (data.message) {
-          toast.info(data.message);
-          setUploading(false);
-          resetUI();
-          return;
-        }
-      } else if (contentType?.includes('text/event-stream')) {
-        // Handle SSE for actual processing
-        const eventSource = new EventSource('/api/redis/process');
+      eventSource.onmessage = (event) => {
+        const message = event.data;
+        handleEventMessage(message, eventSource);
+      };
 
-        eventSource.onmessage = (event) => {
-          const message = event.data;
-          handleEventMessage(message, eventSource);
-        };
+      eventSource.onerror = (error) => {
+        console.error('EventSource failed:', error);
+        setUploadStatus('error');
+        toast.error('An error occurred while processing CSV files');
+        eventSource.close();
+        setUploading(false);
+      };
 
-        eventSource.onerror = (error) => {
-          console.error('EventSource failed:', error);
-          setUploadStatus('error');
-          toast.error('An error occurred while processing CSV files');
-          eventSource.close();
-          setUploading(false);
-        };
-
-        eventSource.onopen = () => {
-          console.log('Connection to server opened.');
-        };
-      } else {
-        throw new Error('Unexpected response type');
-      }
+      eventSource.onopen = () => {
+        console.log('Connection to server opened.');
+      };
     } catch (error: any) {
       setUploadStatus('error');
       toast.error(error.message || 'An unexpected error occurred');
@@ -85,28 +102,45 @@ const ProcessCSV: React.FC = () => {
   };
 
   const handleEventMessage = (message: string, eventSource: EventSource) => {
-    setProgress(prevProgress => prevProgress + '\n' + message);
+    setCurrentLog(message);
+    setLogs((prevLogs) => [...prevLogs, message]);
 
-    if (message.includes('Estimated total batches:')) {
-      const matches = message.match(/Estimated total batches: (\d+)/);
+    if (message.startsWith('Total rows:')) {
+      const matches = message.match(/Total rows: (\d+), Total batches: (\d+)/);
       if (matches) {
-        const estimated = parseInt(matches[1], 10);
-        setEstimatedTotalBatches(estimated);
-        setTotalBatches(estimated);
+        const total = parseInt(matches[1], 10);
+        const batches = parseInt(matches[2], 10);
+        setTotalRows(total);
+        setTotalBatches(batches);
       }
-    } else if (message.includes('Processed and uploaded batch')) {
-      const matches = message.match(/Processed and uploaded batch (\d+)\. Total rows: (\d+)/);
+    } else if (message.startsWith('Processed batch')) {
+      const matches = message.match(
+        /Processed batch (\d+)\/(\d+)\. Rows: (\d+)\/(\d+)\. Progress: ([\d.]+)%/
+      );
       if (matches) {
         const processed = parseInt(matches[1], 10);
+        const total = parseInt(matches[2], 10);
+        const rows = parseInt(matches[3], 10);
+        const totalRows = parseInt(matches[4], 10);
+        const progressPercentage = parseFloat(matches[5]);
+
         setProcessedBatches(processed);
+        setTotalBatches(total);
+        setProcessedRows(rows);
+        setTotalRows(totalRows);
+        setProgress(progressPercentage);
       }
-    } else if (message.includes('Finished processing')) {
+    } else if (
+      message.startsWith('Successfully processed') ||
+      message.startsWith('Finished processing')
+    ) {
       const matches = message.match(/Finished processing (\d+) total rows in (\d+) batches/);
       if (matches) {
         const totalRows = parseInt(matches[1], 10);
         const actualTotalBatches = parseInt(matches[2], 10);
         setTotalBatches(actualTotalBatches);
         setProcessedBatches(actualTotalBatches);
+        setProgress(100);
       }
       setUploadStatus('success');
       toast.success('CSV files processed and data stored in Redis');
@@ -121,7 +155,7 @@ const ProcessCSV: React.FC = () => {
   };
 
   const handleCleanDatabase = async () => {
-    if (!isBrowser) return; // Prevent execution during SSR
+    if (!isBrowser) return;
 
     try {
       const response = await fetch('/api/redis', { method: 'DELETE' });
@@ -130,6 +164,8 @@ const ProcessCSV: React.FC = () => {
         throw new Error(errorData.error || 'Network response was not ok');
       }
       toast.success('Database cleaned successfully');
+      clearOptions();
+      resetUI();
     } catch (error: any) {
       console.error('Clean database error:', error);
       toast.error(error.message || 'Failed to clean the database');
@@ -138,7 +174,6 @@ const ProcessCSV: React.FC = () => {
     }
   };
 
-  // Render null during SSR
   if (!isBrowser) {
     return null;
   }
@@ -172,24 +207,45 @@ const ProcessCSV: React.FC = () => {
       </div>
       {uploadStatus === 'loading' && (
         <div className="mt-4">
-          <h3 className="mb-2 text-lg font-semibold">Progress:</h3>
+          <h3 className="mb-2 text-lg font-semibold">Current Progress:</h3>
           <div className="overflow-x-auto rounded-md bg-gray-100 p-2 dark:bg-gray-700">
-            <pre className="whitespace-pre-wrap">{progress}</pre>
+            <p className="whitespace-pre-wrap">{currentLog}</p>
           </div>
-          {estimatedTotalBatches > 0 && (
+          {totalBatches > 0 && (
             <div className="mt-4">
               <h4 className="text-md mb-1 font-semibold">Total Progress:</h4>
               <div className="relative h-4 w-3/4 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600">
                 <div
                   className="h-4 rounded-full bg-blue-600 transition-all duration-500 ease-in-out"
-                  style={{ width: `${(processedBatches / estimatedTotalBatches) * 100}%` }}
+                  style={{ width: `${progress}%` }}
                 >
                   <div className="absolute left-0 top-0 h-4 w-full animate-pulse bg-blue-800 opacity-25"></div>
                 </div>
               </div>
-              <p className="mt-2 text-sm">
-                {processedBatches} batches processed of approximately {estimatedTotalBatches} total batches
-              </p>
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-sm">
+                  {processedBatches} of {totalBatches} batches processed, {progress.toFixed(2)}% complete
+                  ({processedRows.toLocaleString()} of {totalRows.toLocaleString()} rows)
+                </p>
+                <Button
+                  onClick={() => setShowLogs(!showLogs)}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center space-x-1"
+                >
+                  {showLogs ? <FaChartBar className="mr-1" /> : <FaList className="mr-1" />}
+                  <span>{showLogs ? 'Hide Logs' : 'Show Logs'}</span>
+                </Button>
+              </div>
+              {showLogs && (
+                <div className="mt-4 max-h-60 overflow-y-auto rounded-md bg-gray-100 p-2 dark:bg-gray-700">
+                  {logs.map((log, index) => (
+                    <p key={index} className="whitespace-pre-wrap">
+                      {log}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
