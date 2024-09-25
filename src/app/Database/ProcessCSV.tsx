@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import { FaCloudUploadAlt, FaCheckCircle, FaTimesCircle, FaSpinner, FaTrashAlt } from 'react-icons/fa';
 import { Button } from '@/components/ui/button';
