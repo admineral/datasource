@@ -13,6 +13,9 @@ export default function IndexPage() {
         <Button asChild>
           <Link href="/Database">DATABASE</Link>
         </Button>
+        <Button asChild>
+          <Link href="/Storage">Storage</Link>
+        </Button>
       </div>
       <TricksTable />
     </Shell>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FaCloudUploadAlt, FaCheckCircle, FaTimesCircle, FaSpinner, FaTrashAlt } from 'react-icons/fa';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import dynamic from 'next/dynamic';
 
 const ProcessCSVContent: React.FC = () => {
   const [uploading, setUploading] = useState<boolean>(false);
@@ -10,6 +11,11 @@ const ProcessCSVContent: React.FC = () => {
   const [totalBatches, setTotalBatches] = useState<number>(0);
   const [processedBatches, setProcessedBatches] = useState<number>(0);
   const [showModal, setShowModal] = useState<boolean>(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const resetUI = () => {
     setUploading(false);
@@ -26,53 +32,55 @@ const ProcessCSVContent: React.FC = () => {
     setTotalBatches(0);
     setProcessedBatches(0);
 
-    try {
-      const eventSource = new EventSource('/api/redis/process');
+    if (typeof window !== 'undefined') {
+      try {
+        const eventSource = new EventSource('/api/redis/process');
 
-      eventSource.onmessage = (event) => {
-        const message = event.data;
-        setProgress(message);
+        eventSource.onmessage = (event) => {
+          const message = event.data;
+          setProgress(message);
 
-        if (message.startsWith('Processed batch')) {
-          const matches = message.match(/Processed batch (\d+) of (\d+)/);
-          if (matches) {
-            const processed = parseInt(matches[1], 10);
-            const total = parseInt(matches[2], 10);
-            setProcessedBatches(processed);
-            setTotalBatches(total);
+          if (message.startsWith('Processed batch')) {
+            const matches = message.match(/Processed batch (\d+) of (\d+)/);
+            if (matches) {
+              const processed = parseInt(matches[1], 10);
+              const total = parseInt(matches[2], 10);
+              setProcessedBatches(processed);
+              setTotalBatches(total);
+            }
           }
-        }
 
-        if (message.includes('Successfully processed')) {
-          setUploadStatus('success');
-          toast.success('CSV files processed and data stored in Redis');
-          eventSource.close();
-          setUploading(false);
-          resetUI();
-        }
+          if (message.includes('Successfully processed')) {
+            setUploadStatus('success');
+            toast.success('CSV files processed and data stored in Redis');
+            eventSource.close();
+            setUploading(false);
+            resetUI();
+          }
 
-        if (message.startsWith('Error processing')) {
+          if (message.startsWith('Error processing')) {
+            setUploadStatus('error');
+            toast.error('An error occurred while processing CSV files');
+            eventSource.close();
+            setUploading(false);
+          }
+        };
+
+        eventSource.onerror = (error) => {
           setUploadStatus('error');
           toast.error('An error occurred while processing CSV files');
           eventSource.close();
           setUploading(false);
-        }
-      };
+        };
 
-      eventSource.onerror = (error) => {
+        eventSource.onopen = () => {
+          console.log('Connection to server opened.');
+        };
+      } catch (error: any) {
         setUploadStatus('error');
-        toast.error('An error occurred while processing CSV files');
-        eventSource.close();
+        toast.error(error.message || 'An unexpected error occurred');
         setUploading(false);
-      };
-
-      eventSource.onopen = () => {
-        console.log('Connection to server opened.');
-      };
-    } catch (error: any) {
-      setUploadStatus('error');
-      toast.error(error.message || 'An unexpected error occurred');
-      setUploading(false);
+      }
     }
   };
 
@@ -91,6 +99,10 @@ const ProcessCSVContent: React.FC = () => {
       setShowModal(false);
     }
   };
+
+  if (!isMounted) {
+    return null; // or a loading placeholder
+  }
 
   return (
     <div className="mb-6 rounded-md bg-white p-4 dark:bg-gray-800">
@@ -165,4 +177,4 @@ const ProcessCSVContent: React.FC = () => {
   );
 };
 
-export default ProcessCSVContent;
+export default dynamic(() => Promise.resolve(ProcessCSVContent), { ssr: false });
