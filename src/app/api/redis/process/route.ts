@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createReadStream } from 'fs';
 import { parse } from 'csv-parse';
 import path from 'path';
+import { promises as fs } from 'fs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -49,13 +50,24 @@ async function processBatch(batch: Record<string, any>, sendProgress: (message: 
 
 // Stream and process CSV files
 async function streamCSVs(sendProgress: (message: string) => void) {
+  sendProgress('Starting CSV processing');
   console.log('Starting CSV streaming and processing');
   const dataDir = path.join(process.cwd(), 'public', 'data');
   const salesPath = path.join(dataDir, 'Sales.csv');
   const pricePath = path.join(dataDir, 'Price.csv');
 
-  console.log(`Sales CSV path: ${salesPath}`);
-  console.log(`Price CSV path: ${pricePath}`);
+  sendProgress(`Sales CSV path: ${salesPath}`);
+  sendProgress(`Price CSV path: ${pricePath}`);
+
+  // Calculate total number of rows and batches
+  const [salesRows, priceRows] = await Promise.all([
+    getLineCount(salesPath),
+    getLineCount(pricePath)
+  ]);
+  const totalRows = salesRows + priceRows - 2; // Subtract 2 for headers
+  const totalBatches = Math.ceil(totalRows / BATCH_SIZE);
+
+  sendProgress(`Total rows: ${totalRows}, Estimated total batches: ${totalBatches}`);
 
   let combinedBatch: Record<string, any> = {};
   let totalProcessed = 0;
@@ -64,7 +76,8 @@ async function streamCSVs(sendProgress: (message: string) => void) {
   const salesParser = createReadStream(salesPath).pipe(parse({ columns: true }));
   const priceParser = createReadStream(pricePath).pipe(parse({ columns: true }));
 
-  console.log('CSV parsers created');
+  sendProgress('CSV parsers created');
+  sendProgress('Starting to process Sales and Price CSVs');
 
   const processRow = (row: any, type: 'sales' | 'price') => {
     const { Client, Warehouse, Product, ...dates } = row;
@@ -122,6 +135,12 @@ async function streamCSVs(sendProgress: (message: string) => void) {
 
   console.log(`Total rows processed: ${totalProcessed}`);
   sendProgress(`Finished processing ${totalProcessed} total rows in ${batchCount} batches`);
+}
+
+async function getLineCount(filePath: string): Promise<number> {
+  const fileBuffer = await fs.readFile(filePath);
+  const fileContent = fileBuffer.toString();
+  return fileContent.split('\n').length;
 }
 
 // GET handler

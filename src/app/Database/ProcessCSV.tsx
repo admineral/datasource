@@ -12,6 +12,7 @@ const ProcessCSV: React.FC = () => {
   const [totalBatches, setTotalBatches] = useState<number>(0);
   const [processedBatches, setProcessedBatches] = useState<number>(0);
   const [showModal, setShowModal] = useState<boolean>(false);
+  const [estimatedTotalBatches, setEstimatedTotalBatches] = useState<number>(0);
 
   // New state to track if we're in the browser
   const [isBrowser, setIsBrowser] = useState(false);
@@ -27,6 +28,7 @@ const ProcessCSV: React.FC = () => {
     setProgress('');
     setTotalBatches(0);
     setProcessedBatches(0);
+    setEstimatedTotalBatches(0);
   };
 
   const handleUpload = async () => {
@@ -37,6 +39,7 @@ const ProcessCSV: React.FC = () => {
     setProgress('');
     setTotalBatches(0);
     setProcessedBatches(0);
+    setEstimatedTotalBatches(0);
 
     try {
       const response = await fetch('/api/redis/process');
@@ -82,31 +85,34 @@ const ProcessCSV: React.FC = () => {
   };
 
   const handleEventMessage = (message: string, eventSource: EventSource) => {
-    setProgress(message);
+    setProgress(prevProgress => prevProgress + '\n' + message);
 
-    if (message.includes('Processed and uploaded batch')) {
+    if (message.includes('Estimated total batches:')) {
+      const matches = message.match(/Estimated total batches: (\d+)/);
+      if (matches) {
+        const estimated = parseInt(matches[1], 10);
+        setEstimatedTotalBatches(estimated);
+        setTotalBatches(estimated);
+      }
+    } else if (message.includes('Processed and uploaded batch')) {
       const matches = message.match(/Processed and uploaded batch (\d+)\. Total rows: (\d+)/);
       if (matches) {
         const processed = parseInt(matches[1], 10);
         setProcessedBatches(processed);
       }
-    }
-
-    if (message.includes('Finished processing')) {
+    } else if (message.includes('Finished processing')) {
       const matches = message.match(/Finished processing (\d+) total rows in (\d+) batches/);
       if (matches) {
         const totalRows = parseInt(matches[1], 10);
-        const totalBatches = parseInt(matches[2], 10);
-        setTotalBatches(totalBatches);
-        setProcessedBatches(totalBatches);  // All batches are processed at this point
+        const actualTotalBatches = parseInt(matches[2], 10);
+        setTotalBatches(actualTotalBatches);
+        setProcessedBatches(actualTotalBatches);
       }
       setUploadStatus('success');
       toast.success('CSV files processed and data stored in Redis');
       eventSource.close();
       setUploading(false);
-    }
-
-    if (message.startsWith('Error processing')) {
+    } else if (message.startsWith('Error processing')) {
       setUploadStatus('error');
       toast.error('An error occurred while processing CSV files');
       eventSource.close();
@@ -168,22 +174,21 @@ const ProcessCSV: React.FC = () => {
         <div className="mt-4">
           <h3 className="mb-2 text-lg font-semibold">Progress:</h3>
           <div className="overflow-x-auto rounded-md bg-gray-100 p-2 dark:bg-gray-700">
-            <div>{progress}</div>
+            <pre className="whitespace-pre-wrap">{progress}</pre>
           </div>
-          {processedBatches > 0 && (
+          {estimatedTotalBatches > 0 && (
             <div className="mt-4">
               <h4 className="text-md mb-1 font-semibold">Total Progress:</h4>
               <div className="relative h-4 w-3/4 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600">
                 <div
                   className="h-4 rounded-full bg-blue-600 transition-all duration-500 ease-in-out"
-                  style={{ width: `${(processedBatches / (totalBatches || 1)) * 100}%` }}
+                  style={{ width: `${(processedBatches / estimatedTotalBatches) * 100}%` }}
                 >
                   <div className="absolute left-0 top-0 h-4 w-full animate-pulse bg-blue-800 opacity-25"></div>
                 </div>
               </div>
               <p className="mt-2 text-sm">
-                {processedBatches} batches processed
-                {totalBatches > 0 && ` of ${totalBatches} total batches`}
+                {processedBatches} batches processed of approximately {estimatedTotalBatches} total batches
               </p>
             </div>
           )}
