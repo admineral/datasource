@@ -166,7 +166,7 @@ const processCSVFiles = async (sendProgress: (message: string) => void) => {
 
 // GET handler to initiate CSV processing and stream progress via SSE
 export async function GET(request: NextRequest) {
-  // Check if the application is in the build phase
+  // Check if we're in build mode
   if (env.NEXT_PUBLIC_IS_BUILD === 'true') {
     // Return a mock response during build time
     return new Response(JSON.stringify({ message: 'CSV processing is not available during build time' }), {
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Proceed with CSV processing only if not in build phase
+  // Proceed with CSV processing only if not in build mode
   if (
     process.env.NODE_ENV === 'development' ||
     process.env.VERCEL_ENV === 'preview' ||

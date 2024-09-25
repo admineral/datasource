@@ -43,7 +43,7 @@ const ProcessCSV: React.FC = () => {
       const contentType = response.headers.get('Content-Type');
 
       if (contentType?.includes('application/json')) {
-        // Handle JSON response
+        // Handle JSON response (build time or unsupported environment)
         const data = await response.json();
         if (data.message) {
           toast.info(data.message);
@@ -52,7 +52,7 @@ const ProcessCSV: React.FC = () => {
           return;
         }
       } else if (contentType?.includes('text/event-stream')) {
-        // Handle SSE
+        // Handle SSE for actual processing
         const eventSource = new EventSource('/api/redis/process');
 
         eventSource.onmessage = (event) => {
