@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { NextResponse } from 'next/server';
 

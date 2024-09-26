@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FileUploader } from './FileUploader';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,7 +30,7 @@ export default function UploadPage() {
     fetchFiles();
   }, []);
 
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     try {
       const response = await fetch('/api/hetzner/list');
       if (response.ok) {
@@ -43,36 +43,54 @@ export default function UploadPage() {
       console.error('Error fetching files:', error);
       toast.error('Error occurred while fetching files');
     }
-  };
+  }, []);
 
-  const handleUpload = async (filesToUpload: File[]) => {
+  const handleUpload = useCallback(async (filesToUpload: File[]) => {
     for (const file of filesToUpload) {
-      const formData = new FormData();
-      formData.append('file', file);
-
       try {
-        const response = await fetch('/api/hetzner', {
+        // Step 1: Get presigned URL from the server
+        const presignResponse = await fetch('/api/hetzner/presign', {
           method: 'POST',
-          body: formData,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileName: encodeURIComponent(file.name),
+            fileType: file.type,
+          }),
         });
 
-        if (response.ok) {
-          const result = await response.json();
+        if (!presignResponse.ok) {
+          const errorData = await presignResponse.json();
+          toast.error(`Presign failed for ${file.name}: ${errorData.error}`);
+          continue;
+        }
+
+        const { url } = await presignResponse.json();
+
+        // Step 2: Upload the file directly to MinIO using the presigned URL
+        const uploadResponse = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type,
+          },
+          body: file,
+        });
+
+        if (uploadResponse.ok) {
           toast.success(`File ${file.name} uploaded successfully`);
         } else {
-          const errorData = await response.json();
-          toast.error(`Failed to upload ${file.name}: ${errorData.error}`);
+          toast.error(`Failed to upload ${file.name}`);
         }
       } catch (error) {
         console.error('Upload error:', error);
         toast.error(`Error occurred while uploading ${file.name}`);
-        throw error;
       }
     }
 
     // After all uploads are complete, refresh the file list
     fetchFiles();
-  };
+  }, [fetchFiles]);
 
   const openDeleteModal = (fileName: string) => {
     setFileToDelete(fileName);
@@ -84,7 +102,7 @@ export default function UploadPage() {
     setIsDeleteModalOpen(false);
   };
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!fileToDelete) return;
 
     try {
@@ -105,7 +123,7 @@ export default function UploadPage() {
     } finally {
       closeDeleteModal();
     }
-  };
+  }, [fileToDelete, fetchFiles]);
 
   return (
     <div className="p-4 max-w-4xl mx-auto">

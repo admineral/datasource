@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { NextResponse } from 'next/server';
 
@@ -25,7 +27,7 @@ export async function GET() {
       lastModified: item.LastModified,
     })) || [];
 
-    return NextResponse.json({ files });
+    return NextResponse.json({ files }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Error listing files:', error);
     return NextResponse.json({ error: 'Failed to list files' }, { status: 500 });

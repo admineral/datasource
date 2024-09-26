@@ -19,6 +19,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^0.0.62",
     "@aws-sdk/client-s3": "^3.658.0",
+    "@aws-sdk/s3-request-presigner": "^3.658.1",
     "@radix-ui/react-checkbox": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.1",
     "@radix-ui/react-dropdown-menu": "^2.1.1",
