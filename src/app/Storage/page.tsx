@@ -55,7 +55,7 @@ export default function UploadPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            fileName: encodeURIComponent(file.name),
+            fileName: file.name, // **Removed encodeURIComponent**
             fileType: file.type,
           }),
         });
