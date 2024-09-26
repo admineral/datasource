@@ -2,208 +2,287 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Redis from 'ioredis';
-import { z } from 'zod';
-import { createReadStream } from 'fs';
+import { createReadStream, existsSync } from 'fs';
 import { parse } from 'csv-parse';
 import path from 'path';
-import { promises as fs } from 'fs';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
+import * as readline from 'readline';
 
-// Ensure the server runtime
+// Define runtime and caching behavior
 export const runtime = 'nodejs';
-
-// Disable caching and set maximum duration
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 300; // seconds
 
-// Define and validate environment variables
-const envSchema = z.object({
-  REDIS_URL: z.string().url(),
-  REDIS_PASSWORD: z.string().min(1),
-  NEXT_PUBLIC_IS_BUILD: z.string().optional(),
-});
-const env = envSchema.parse(process.env);
+// Environment Variable Validation
+const REDIS_URL = process.env.REDIS_URL;
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+const DATA_DIR = path.join(process.cwd(), 'public', 'data');
+const SALES_CSV = path.join(DATA_DIR, 'Sales.csv');
+const PRICE_CSV = path.join(DATA_DIR, 'Price.csv');
 
-console.log('Environment variables validated');
+if (!REDIS_URL || !REDIS_PASSWORD) {
+  console.error('Fehlende Redis-Konfiguration in den Umgebungsvariablen.');
+  throw new Error('Fehlende Redis-Konfiguration in den Umgebungsvariablen.');
+}
 
 // Initialize Redis client
-const redis = new Redis(env.REDIS_URL, { password: env.REDIS_PASSWORD });
-console.log('Redis client initialized');
+const redis = new Redis(REDIS_URL, {
+  password: REDIS_PASSWORD,
+});
 
-// Define batch size for Redis operations
-const BATCH_SIZE = 1000;
-console.log(`Batch size set to ${BATCH_SIZE}`);
+redis.on('connect', () => {
+  console.log('Erfolgreich mit Redis verbunden.');
+});
 
-// Function to process a single batch and store data in Redis
-async function processBatch(
-  batch: Record<string, Record<string, string>>,
-  sendProgress: (message: string) => void
-) {
-  const batchSize = Object.keys(batch).length;
-  console.log(`Starting to process batch of ${batchSize} items`);
-  const pipeline = redis.pipeline();
+redis.on('error', (err) => {
+  console.error('Redis-Verbindungsfehler:', err);
+});
 
-  for (const [key, data] of Object.entries(batch)) {
-    for (const [field, value] of Object.entries(data)) {
-      pipeline.hset(key, field, value);
+// Define batch size
+const BATCH_SIZE = 500;
+
+/**
+ * Zählt die Anzahl der Zeilen in einer Datei.
+ * @param filePath Pfad zur Datei.
+ * @returns Anzahl der Zeilen.
+ */
+async function countLines(filePath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let lineCount = 0;
+
+    if (!existsSync(filePath)) {
+      console.error(`Datei nicht gefunden: ${filePath}`);
+      return reject(new Error(`Datei nicht gefunden: ${filePath}`));
     }
 
-    const [Client, Warehouse, Product] = key.split(':');
-    pipeline.sadd(`index:client:${Client}`, key);
-    pipeline.sadd(`index:warehouse:${Warehouse}`, key);
-    pipeline.sadd(`index:product:${Product}`, key);
-  }
+    const readStream = createReadStream(filePath);
+    readStream.on('error', (err) => {
+      console.error(`Fehler beim Lesen der Datei ${filePath}:`, err);
+      reject(err);
+    });
 
-  console.log('Executing Redis pipeline');
-  const results = await pipeline.exec();
-  console.log(`Redis pipeline executed with ${results?.length} operations`);
-  sendProgress(`Uploaded batch of ${batchSize} items`);
+    const rl = readline.createInterface({
+      input: readStream,
+      crlfDelay: Infinity, // Erfasst sowohl \n als auch \r\n als Zeilenenden
+    });
+
+    rl.on('line', () => {
+      lineCount++;
+      // Log jede 1000. Zeile
+      if (lineCount % 1000 === 0) {
+        console.log(`Gezählte Zeilen in ${path.basename(filePath)}: ${lineCount}`);
+      }
+    });
+
+    rl.on('close', () => {
+      console.log(`Endgültige Zeilenzahl für ${path.basename(filePath)}: ${lineCount}`);
+      resolve(lineCount);
+    });
+
+    rl.on('error', (err) => {
+      console.error(`Fehler beim Parsen der Datei ${filePath}:`, err);
+      reject(err);
+    });
+  });
 }
 
-// Function to stream and process CSV files
-async function streamCSVs(sendProgress: (message: string) => void) {
-  sendProgress('Starting CSV processing');
-  console.log('Starting CSV streaming and processing');
+/**
+ * Verarbeitet eine CSV-Datei und fügt Daten zu einer Map hinzu.
+ * @param filePath Pfad zur CSV-Datei.
+ * @param type Typ der Daten ('sales' oder 'price').
+ * @param dataMap Map zur Speicherung der kombinierten Daten.
+ */
+async function processCSV(
+  filePath: string,
+  type: 'sales' | 'price',
+  dataMap: Map<string, Record<string, string>>
+) {
+  return new Promise<void>((resolve, reject) => {
+    console.log(`Starte Verarbeitung der Datei ${filePath} als ${type}.`);
+    const parser = createReadStream(filePath).pipe(
+      parse({
+        columns: true,
+        skip_empty_lines: true,
+      })
+    );
 
-  const dataDir = path.join(process.cwd(), 'public', 'data');
-  const salesPath = path.join(dataDir, 'Sales.csv');
-  const pricePath = path.join(dataDir, 'Price.csv');
+    parser.on('data', (row: any) => {
+      const { Client, Warehouse, Product, ...dates } = row;
+      if (!Client || !Warehouse || !Product) {
+        // Überspringt Zeilen mit fehlenden Schlüsseln
+        console.warn(`Überspringe Zeile mit fehlenden Schlüsseln in ${path.basename(filePath)}: ${JSON.stringify(row)}`);
+        return;
+      }
+      const key = `${Client}:${Warehouse}:${Product}`;
+      if (!dataMap.has(key)) {
+        dataMap.set(key, {});
+      }
+      const existingData = dataMap.get(key)!;
+      for (const [date, value] of Object.entries(dates)) {
+        if (value !== undefined && value !== '') {
+          existingData[`${type}:${date}`] = String(value);
+        }
+      }
+    });
 
-  sendProgress(`Sales CSV path: ${salesPath}`);
-  sendProgress(`Price CSV path: ${pricePath}`);
+    parser.on('end', () => {
+      console.log(`Verarbeitung der Datei ${filePath} als ${type} abgeschlossen.`);
+      resolve();
+    });
 
-  // Calculate total number of rows and batches
-  const [salesRows, priceRows] = await Promise.all([
-    getLineCount(salesPath),
-    getLineCount(pricePath),
+    parser.on('error', (err) => {
+      console.error(`Fehler beim Parsen der Datei ${filePath}:`, err);
+      reject(err);
+    });
+  });
+}
+
+/**
+ * Lädt einen Batch von Daten in Redis hoch.
+ * @param batch Map mit den zu ladenden Daten.
+ * @param sendProgress Funktion zum Senden von Fortschrittsmeldungen.
+ */
+async function uploadBatch(
+  batch: Map<string, Record<string, string>>,
+  sendProgress: (msg: string) => void
+) {
+  const pipelineRedis = redis.pipeline();
+
+  for (const [key, data] of batch.entries()) {
+    pipelineRedis.hmset(key, data);
+
+    // Indexing für schnelles Nachschlagen
+    const [Client, Warehouse, Product] = key.split(':');
+    pipelineRedis.sadd(`index:client:${Client}`, key);
+    pipelineRedis.sadd(`index:warehouse:${Warehouse}`, key);
+    pipelineRedis.sadd(`index:product:${Product}`, key);
+  }
+
+  try {
+    await pipelineRedis.exec();
+    sendProgress(`Batch mit ${batch.size} Einträgen hochgeladen.`);
+    console.log(`Batch mit ${batch.size} Einträgen erfolgreich hochgeladen.`);
+  } catch (error: any) {
+    console.error('Fehler beim Hochladen des Batches:', error);
+    sendProgress(`Fehler beim Hochladen des Batches: ${error.message || 'Unbekannter Fehler'}`);
+    throw error;
+  }
+}
+
+/**
+ * Hauptfunktion zur Verarbeitung der CSV-Dateien.
+ * @param sendProgress Funktion zum Senden von Fortschrittsmeldungen.
+ */
+async function processCSVs(sendProgress: (msg: string) => void) {
+  // Überprüft, ob die CSV-Dateien existieren
+  if (!existsSync(SALES_CSV) || !existsSync(PRICE_CSV)) {
+    sendProgress('Eine oder beide CSV-Dateien fehlen.');
+    throw new Error('CSV-Dateien nicht gefunden.');
+  }
+
+  // Zählt die Gesamtanzahl der Zeilen in beiden CSV-Dateien
+  sendProgress('Zeilen in CSV-Dateien werden gezählt...');
+  console.log('Zeilen in CSV-Dateien werden gezählt...');
+  const [salesLines, priceLines] = await Promise.all([
+    countLines(SALES_CSV),
+    countLines(PRICE_CSV),
   ]);
 
-  // Adjust totalRows based on headers
-  const totalRows = salesRows + priceRows - 2; // Subtract 2 for headers
+  // Subtrahiert die Header-Zeilen
+  const totalSales = salesLines - 1;
+  const totalPrice = priceLines - 1;
+  const totalRows = totalSales + totalPrice;
   const totalBatches = Math.ceil(totalRows / BATCH_SIZE);
 
-  sendProgress(`Total rows: ${totalRows}, Total batches: ${totalBatches}`);
+  sendProgress(`Gesamtanzahl der zu verarbeitenden Zeilen: ${totalRows}`);
+  sendProgress(`Gesamtanzahl der Batches: ${totalBatches}`);
+  console.log(`Gesamtanzahl der zu verarbeitenden Zeilen: ${totalRows}`);
+  console.log(`Gesamtanzahl der Batches: ${totalBatches}`);
 
-  let combinedBatch: Record<string, Record<string, string>> = {};
-  let totalProcessed = 0;
+  // Map zur Speicherung der kombinierten Daten
+  const dataMap: Map<string, Record<string, string>> = new Map();
+
+  // Verarbeitet Sales.csv
+  sendProgress('Verarbeitung von Sales.csv gestartet...');
+  console.log('Verarbeitung von Sales.csv gestartet...');
+  await processCSV(SALES_CSV, 'sales', dataMap);
+  sendProgress('Verarbeitung von Sales.csv abgeschlossen.');
+  console.log('Verarbeitung von Sales.csv abgeschlossen.');
+
+  // Verarbeitet Price.csv
+  sendProgress('Verarbeitung von Price.csv gestartet...');
+  console.log('Verarbeitung von Price.csv gestartet...');
+  await processCSV(PRICE_CSV, 'price', dataMap);
+  sendProgress('Verarbeitung von Price.csv abgeschlossen.');
+  console.log('Verarbeitung von Price.csv abgeschlossen.');
+
+  // Loggen der Anzahl der Einträge in dataMap
+  console.log(`Anzahl der Einträge in dataMap: ${dataMap.size}`);
+  sendProgress(`Anzahl der Einträge in dataMap: ${dataMap.size}`);
+
+  if (dataMap.size === 0) {
+    console.warn('Keine Daten zum Hochladen vorhanden.');
+    sendProgress('Keine Daten zum Hochladen vorhanden.');
+    return;
+  }
+
+  // Lädt die Daten in Batches hoch
   let batchCount = 0;
-
-  const salesParser = createReadStream(salesPath).pipe(parse({ columns: true }));
-  const priceParser = createReadStream(pricePath).pipe(parse({ columns: true }));
-
-  sendProgress('CSV parsers created');
-  sendProgress('Starting to process Sales and Price CSVs');
-
-  const processRow = (row: any, type: 'sales' | 'price') => {
-    const { Client, Warehouse, Product, ...dates } = row;
-    const key = `${Client}:${Warehouse}:${Product}`;
-
-    if (!combinedBatch[key]) {
-      combinedBatch[key] = {};
-    }
-
-    for (const [date, value] of Object.entries(dates)) {
-      if (value !== undefined && value !== '') {
-        combinedBatch[key][`${type}:${date}`] = String(value);
-      }
-    }
-  };
-
-  console.log('Starting to process Sales and Price CSVs');
-  let salesDone = false;
-  let priceDone = false;
-  const salesIter = salesParser[Symbol.asyncIterator]();
-  const priceIter = priceParser[Symbol.asyncIterator]();
-
-  while (!salesDone || !priceDone) {
-    if (!salesDone) {
-      const { value: salesRow, done: salesFinished } = await salesIter.next();
-      if (salesFinished) {
-        salesDone = true;
-      } else {
-        processRow(salesRow, 'sales');
-      }
-    }
-
-    if (!priceDone) {
-      const { value: priceRow, done: priceFinished } = await priceIter.next();
-      if (priceFinished) {
-        priceDone = true;
-      } else {
-        processRow(priceRow, 'price');
-      }
-    }
-
-    // Check if batch size reached or processing is done
-    if (
-      Object.keys(combinedBatch).length >= BATCH_SIZE ||
-      (salesDone && priceDone && Object.keys(combinedBatch).length > 0)
-    ) {
-      await processBatch(combinedBatch, sendProgress);
+  const entries = Array.from(dataMap.entries());
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    const batch = new Map(entries.slice(i, i + BATCH_SIZE));
+    try {
+      await uploadBatch(batch, sendProgress);
       batchCount++;
-
-      // Increment totalProcessed by the number of items in the batch
-      totalProcessed += Object.keys(combinedBatch).length;
-
-      const progressPercentage = ((totalProcessed / totalRows) * 100).toFixed(2);
-      sendProgress(
-        `Processed batch ${batchCount}/${totalBatches}. Rows: ${totalProcessed}/${totalRows}. Progress: ${progressPercentage}%`
-      );
-
-      // Reset combinedBatch for the next batch
-      combinedBatch = {};
+      const progress = ((batchCount / totalBatches) * 100).toFixed(2);
+      sendProgress(`Fortschritt: ${progress}% (${batchCount}/${totalBatches} Batches)`);
+      console.log(`Fortschritt: ${progress}% (${batchCount}/${totalBatches} Batches)`);
+    } catch (error) {
+      console.error('Fehler beim Hochladen des Batches:', error);
+      // Weiter mit dem nächsten Batch oder brechen
+      // Hier entscheiden wir uns, den Prozess abzubrechen
+      throw error;
     }
   }
 
-  console.log(`Total rows processed: ${totalProcessed}`);
-  sendProgress(`Finished processing ${totalProcessed} total rows in ${batchCount} batches`);
+  sendProgress('CSV-Verarbeitung und Daten-Upload erfolgreich abgeschlossen.');
+  console.log('CSV-Verarbeitung und Daten-Upload erfolgreich abgeschlossen.');
 }
 
-// Helper function to count the number of lines in a file
-async function getLineCount(filePath: string): Promise<number> {
-  const fileBuffer = await fs.readFile(filePath);
-  const fileContent = fileBuffer.toString();
-  return fileContent.split('\n').length;
-}
-
-// GET handler to initiate CSV processing and stream progress updates
+// GET handler to initiate processing and stream progress
 export async function GET(request: NextRequest) {
-  console.log('GET request received');
-
-  if (env.NEXT_PUBLIC_IS_BUILD === 'true') {
-    console.log('Request during build time, returning early');
-    return NextResponse.json({ message: 'CSV processing is not available during build time' });
+  // Überprüft, ob die Verarbeitung erlaubt ist (nicht während des Builds)
+  if (process.env.NEXT_PUBLIC_IS_BUILD === 'true') {
+    console.log('CSV-Verarbeitung ist zur Build-Zeit nicht verfügbar.');
+    return NextResponse.json({ message: 'CSV-Verarbeitung ist zur Build-Zeit nicht verfügbar.' });
   }
 
+  // Initialisiert den SSE-Stream
   const stream = new ReadableStream({
     async start(controller) {
-      console.log('Starting ReadableStream');
-      const sendProgress = (message: string) => {
-        console.log(`Progress: ${message}`);
-        controller.enqueue(`data: ${message}\n\n`);
+      const encoder = new TextEncoder();
+
+      // Funktion zum Senden von Fortschrittsmeldungen
+      const sendProgress = (msg: string) => {
+        const data = `data: ${msg}\n\n`;
+        controller.enqueue(encoder.encode(data));
+        console.log(`Progress: ${msg}`);
       };
 
       try {
-        console.log('Starting CSV processing');
-        await streamCSVs(sendProgress);
-        console.log('CSV processing completed successfully');
-        controller.enqueue(`data: Successfully processed CSV files and stored data in Redis\n\n`);
+        await processCSVs(sendProgress);
+        sendProgress('CSV-Verarbeitung und Daten-Upload erfolgreich abgeschlossen.');
       } catch (error: any) {
-        console.error('Error processing CSV files:', error);
-        controller.enqueue(
-          `data: Error processing CSV files: ${
-            error instanceof Error ? error.message : 'Unknown error'
-          }\n\n`
-        );
+        console.error('Fehler während der CSV-Verarbeitung:', error);
+        sendProgress(`Error: ${error.message || 'Unbekannter Fehler aufgetreten.'}`);
       } finally {
-        console.log('Closing ReadableStream controller');
         controller.close();
-        // Gracefully close Redis connection
         redis.quit();
       }
     },
   });
 
-  console.log('Returning NextResponse with stream');
   return new NextResponse(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
