@@ -2,8 +2,8 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
+  console.log('Received upload request');
   try {
-    console.log('Received upload request');
     const formData = await request.formData();
     const files = formData.getAll('file') as File[];
 
