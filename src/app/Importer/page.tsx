@@ -14,6 +14,9 @@ export default function IndexPage() {
           <Link href="/Database">DATABASE</Link>
         </Button>
         <Button asChild>
+          <Link href="/DatabaseCharts">SEARCH DATABASE with Charts</Link>
+        </Button>
+        <Button asChild>
           <Link href="/Storage">Storage</Link>
         </Button>
       </div>

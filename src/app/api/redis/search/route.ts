@@ -32,7 +32,6 @@ export async function GET(request: NextRequest) {
       const productKeys = await redis.smembers(`index:product:${product}`);
       keys = keys.length ? keys.filter(key => productKeys.includes(key)) : productKeys;
     }
-
     // Apply limit to the keys
     keys = keys.slice(0, limit);
 

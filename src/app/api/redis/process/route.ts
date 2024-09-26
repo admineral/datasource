@@ -1,11 +1,8 @@
-// File: app/api/redis/process/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import Redis from 'ioredis';
 import { createReadStream, existsSync } from 'fs';
 import { parse } from 'csv-parse';
 import path from 'path';
-import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import * as readline from 'readline';
 
@@ -157,6 +154,15 @@ async function uploadBatch(
     pipelineRedis.sadd(`index:client:${Client}`, key);
     pipelineRedis.sadd(`index:warehouse:${Warehouse}`, key);
     pipelineRedis.sadd(`index:product:${Product}`, key);
+
+    // **New: Add sales data to sorted set for fast fetching**
+    Object.entries(data).forEach(([field, value]) => {
+      const [type, date] = field.split(':'); // e.g., type = 'sales', date = '2023-01-01'
+      if (type === 'sales') {
+        const timestamp = new Date(date).getTime();
+        pipelineRedis.zadd(`product_sales:${Product}`, timestamp, date);
+      }
+    });
   }
 
   try {
@@ -240,8 +246,7 @@ async function processCSVs(sendProgress: (msg: string) => void) {
       console.log(`Fortschritt: ${progress}% (${batchCount}/${totalBatches} Batches)`);
     } catch (error) {
       console.error('Fehler beim Hochladen des Batches:', error);
-      // Weiter mit dem nächsten Batch oder brechen
-      // Hier entscheiden wir uns, den Prozess abzubrechen
+      // Entscheidet sich, den Prozess abzubrechen
       throw error;
     }
   }
