@@ -3,7 +3,7 @@
   "short_name": "Datasource Dashboard",
   "icons": [
     {
-      "src": "/icon.png",
+      "src": "/favicon.ico",
       "sizes": "32x32",
       "type": "image/png"
     }

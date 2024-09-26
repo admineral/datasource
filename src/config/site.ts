@@ -5,7 +5,7 @@ export type SiteConfig = typeof siteConfig
 export const siteConfig = {
   name: "Datasource",
   description:
-    "CSV importer built with shadcn-ui, react-dropzone, and papaparse.",
+    "Dashboard for your data",
   url:
     env.NODE_ENV === "development"
       ? "http://localhost:3000"
