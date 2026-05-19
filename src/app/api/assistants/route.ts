@@ -1,10 +1,11 @@
-import { openai } from "@/app/openai";
+import { getOpenAI } from "@/app/openai";
 
 export const runtime = "nodejs";
 
 
 // Create a new assistant
 export async function POST() {
+  const openai = getOpenAI();
   const assistant = await openai.beta.assistants.create({
     instructions: "You are a helpful assistant.",
     name: "Data Visualization Assistant",

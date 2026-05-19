@@ -1,15 +1,17 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Message } from "./components/message";
 import { useScrollToBottom } from "./components/use-scroll-to-bottom";
 import { motion } from "framer-motion";
-import { GitIcon, MasonryIcon, VercelIcon } from "./components/icons";
-import Link from "next/link";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 
 export default function Home() {
-  const { messages, handleSubmit, input, setInput, append } = useChat();
+  const [input, setInput] = useState("");
+  const { messages, sendMessage, status } = useChat({
+    transport: new DefaultChatTransport({ api: "/api/chat" }),
+  });
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [messagesContainerRef, messagesEndRef] =
@@ -23,6 +25,8 @@ export default function Home() {
     },
   ];
 
+  const isLoading = status === "submitted" || status === "streaming";
+
   return (
     <div className="flex flex-row justify-center pb-20 h-dvh">
       <div className="flex flex-col justify-between gap-4">
@@ -34,23 +38,15 @@ export default function Home() {
             <motion.div className="h-[350px] px-4 w-full md:w-[500px] md:px-0 pt-20">
               <div className="border rounded-lg p-6 flex flex-col gap-4 text-zinc-500 text-sm dark:text-zinc-400 dark:border-zinc-700">
                 <p className="text-center">
-                  Multi-step generations with gpt-4o-mini 
+                  Multi-step generations with gpt-4o-mini
                 </p>
               </div>
             </motion.div>
           )}
 
-          {messages.map((message, i) => {
-            return (
-              <Message
-                key={message.id}
-                role={message.role}
-                content={message.content}
-                toolInvocations={message.toolInvocations}
-                reasoningMessages={[]}
-              ></Message>
-            );
-          })}
+          {messages.map((message) => (
+            <Message key={message.id} message={message} />
+          ))}
           <div ref={messagesEndRef} />
         </div>
 
@@ -65,12 +61,10 @@ export default function Home() {
                 className={index > 1 ? "hidden sm:block" : "block"}
               >
                 <button
-                  onClick={async () => {
-                    append({
-                      role: "user",
-                      content: suggestedAction.action,
-                    });
+                  onClick={() => {
+                    void sendMessage({ text: suggestedAction.action });
                   }}
+                  disabled={isLoading}
                   className="w-full text-left border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-300 rounded-lg p-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex flex-col"
                 >
                   <span className="font-medium">{suggestedAction.title}</span>
@@ -84,7 +78,12 @@ export default function Home() {
 
         <form
           className="flex flex-col gap-2 relative items-center"
-          onSubmit={handleSubmit}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!input.trim() || isLoading) return;
+            void sendMessage({ text: input });
+            setInput("");
+          }}
         >
           <input
             ref={inputRef}
@@ -94,6 +93,7 @@ export default function Home() {
             onChange={(event) => {
               setInput(event.target.value);
             }}
+            disabled={isLoading}
           />
         </form>
       </div>

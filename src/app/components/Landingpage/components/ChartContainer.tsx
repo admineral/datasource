@@ -41,8 +41,8 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
         )}
       </div>
       {data.length > 0 ? (
-        <div className="w-full h-96">
-          {children || <div>No valid chart element provided</div>}
+        <div className="relative h-96 w-full min-h-96">
+          <div className="absolute inset-0 min-h-0 min-w-0">{children}</div>
         </div>
       ) : (
         <div className="flex items-center justify-center h-64">

@@ -1,6 +1,6 @@
 import { siteConfig } from "@/config/site"
 import { cn } from "@/lib/utils"
-import { SiteHeader } from "@/components/layouts/site-header"
+import { ConditionalHeader } from "@/components/layouts/conditional-header"
 import { ThemeProvider } from "@/components/providers"
 import { TailwindIndicator } from "@/components/tailwind-indicator"
 
@@ -74,7 +74,7 @@ export default function RootLayout({ children }: React.PropsWithChildren) {
           disableTransitionOnChange
         >
           <div className="relative flex min-h-screen flex-col">
-            <SiteHeader />
+            <ConditionalHeader />
             <main className="flex-1">{children}</main>
           </div>
           <TailwindIndicator />

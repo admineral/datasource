@@ -37,7 +37,7 @@ const TotalSalesChart: React.FC<TotalSalesChartProps> = ({
 }) => {
   if (chartType === 'Bar') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis dataKey="period" stroke="#9CA3AF" />
@@ -46,16 +46,18 @@ const TotalSalesChart: React.FC<TotalSalesChartProps> = ({
             stroke="#9CA3AF"
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              `${value}`,
+            formatter={(value, name) => {
+              const num = Number(value);
+              return [
+              `${num}`,
               isInRow
                 ? 'Total Sales'
                 : isByYear
                 ? selectedYears.length > 1
-                  ? `Year ${name}`
+                  ? `Year ${String(name)}`
                   : 'Units Sold'
                 : 'Units Sold',
-            ]}
+            ]}}
             contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
           />
           {isByYear ? (
@@ -78,7 +80,7 @@ const TotalSalesChart: React.FC<TotalSalesChartProps> = ({
     );
   } else if (chartType === 'Line') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis dataKey="period" stroke="#9CA3AF" />
@@ -87,16 +89,18 @@ const TotalSalesChart: React.FC<TotalSalesChartProps> = ({
             stroke="#9CA3AF"
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              `${value}`,
+            formatter={(value, name) => {
+              const num = Number(value);
+              return [
+              `${num}`,
               isInRow
                 ? 'Total Sales'
                 : isByYear
                 ? selectedYears.length > 1
-                  ? `Year ${name}`
+                  ? `Year ${String(name)}`
                   : 'Units Sold'
                 : 'Units Sold',
-            ]}
+            ]}}
             contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
           />
           {isByYear ? (
@@ -131,7 +135,7 @@ const TotalSalesChart: React.FC<TotalSalesChartProps> = ({
     );
   } else if (chartType === 'Area') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
         <AreaChart data={data}>
           <defs>
             <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
@@ -146,10 +150,7 @@ const TotalSalesChart: React.FC<TotalSalesChartProps> = ({
             stroke="#9CA3AF"
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              `${value}`,
-              'Units Sold',
-            ]}
+            formatter={(value) => [`${Number(value)}`, 'Units Sold']}
             contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
           />
           <Area

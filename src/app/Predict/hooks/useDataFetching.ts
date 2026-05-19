@@ -4,8 +4,11 @@ import { DataPoint, DataType } from '../types'
 export const useDataFetching = (dataType: DataType) => {
   const [data, setData] = useState<DataPoint[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
     try {
       const response = await fetch(`/api/data?type=${dataType}`)
       if (!response.ok) {
@@ -16,16 +19,18 @@ export const useDataFetching = (dataType: DataType) => {
         throw new Error('Invalid or empty data received')
       }
       setData(result.data)
-      setError(null)
-    } catch (error) {
-      console.error('Error fetching data:', error)
-      setError(`Error fetching data: ${(error as Error).message}`)
+    } catch (err) {
+      console.error('Error fetching data:', err)
+      setError(`Error fetching data: ${(err as Error).message}`)
+      setData([])
+    } finally {
+      setIsLoading(false)
     }
   }, [dataType])
 
   useEffect(() => {
-    fetchData()
+    void fetchData()
   }, [fetchData])
 
-  return { data, error, refetch: fetchData }
+  return { data, error, isLoading, refetch: fetchData }
 }

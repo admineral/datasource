@@ -1,5 +1,5 @@
 import { assistantId } from "@/app/assistant-config";
-import { openai } from "@/app/openai";
+import { getOpenAI } from "@/app/openai";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -7,8 +7,10 @@ export const maxDuration = 300;
 // Send a new message to a thread
 export async function POST(
   request: Request,
-  { params: { threadId } }: { params: { threadId: string } }
+  { params }: { params: Promise<{ threadId: string }> },
 ) {
+  const { threadId } = await params;
+  const openai = getOpenAI();
   const { content } = await request.json();
 
   await openai.beta.threads.messages.create(threadId, {

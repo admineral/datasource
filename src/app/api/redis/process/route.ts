@@ -11,30 +11,36 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // seconds
 
-// Environment Variable Validation
-const REDIS_URL = process.env.REDIS_URL;
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 const DATA_DIR = path.join(process.cwd(), 'public', 'data');
 const SALES_CSV = path.join(DATA_DIR, 'Sales.csv');
 const PRICE_CSV = path.join(DATA_DIR, 'Price.csv');
 
-if (!REDIS_URL || !REDIS_PASSWORD) {
-  console.error('Fehlende Redis-Konfiguration in den Umgebungsvariablen.');
-  throw new Error('Fehlende Redis-Konfiguration in den Umgebungsvariablen.');
+let redis: Redis | undefined;
+
+function getRedis() {
+  const REDIS_URL = process.env.REDIS_URL;
+  const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+
+  if (!REDIS_URL || !REDIS_PASSWORD) {
+    throw new Error('Fehlende Redis-Konfiguration in den Umgebungsvariablen.');
+  }
+
+  if (!redis) {
+    redis = new Redis(REDIS_URL, {
+      password: REDIS_PASSWORD,
+    });
+
+    redis.on('connect', () => {
+      console.log('Erfolgreich mit Redis verbunden.');
+    });
+
+    redis.on('error', (err) => {
+      console.error('Redis-Verbindungsfehler:', err);
+    });
+  }
+
+  return redis;
 }
-
-// Initialize Redis client
-const redis = new Redis(REDIS_URL, {
-  password: REDIS_PASSWORD,
-});
-
-redis.on('connect', () => {
-  console.log('Erfolgreich mit Redis verbunden.');
-});
-
-redis.on('error', (err) => {
-  console.error('Redis-Verbindungsfehler:', err);
-});
 
 // Define batch size
 const BATCH_SIZE = 500;
@@ -144,7 +150,7 @@ async function uploadBatch(
   batch: Map<string, Record<string, string>>,
   sendProgress: (msg: string) => void
 ) {
-  const pipelineRedis = redis.pipeline();
+  const pipelineRedis = getRedis().pipeline();
 
   for (const [key, data] of batch.entries()) {
     pipelineRedis.hmset(key, data);
@@ -283,7 +289,7 @@ export async function GET(request: NextRequest) {
         sendProgress(`Error: ${error.message || 'Unbekannter Fehler aufgetreten.'}`);
       } finally {
         controller.close();
-        redis.quit();
+        getRedis().quit();
       }
     },
   });

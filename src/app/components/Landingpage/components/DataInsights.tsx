@@ -455,7 +455,7 @@ const DataInsights: React.FC = () => {
           setChartType={setComposedChartType}
           availableChartTypes={['Composed']}
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
             <ComposedChart data={composedChartData}>
               <CartesianGrid stroke="#374151" />
               <XAxis
@@ -495,7 +495,7 @@ const DataInsights: React.FC = () => {
           setChartType={setAreaChartType}
           availableChartTypes={['Area']}
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
             <AreaChart data={processedTotalPriceData}>
               <defs>
                 <linearGradient id="positive" x1="0" y1="0" x2="0" y2="1">

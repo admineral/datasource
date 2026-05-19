@@ -37,7 +37,7 @@ const AvgPriceChart: React.FC<AvgPriceChartProps> = ({
 }) => {
   if (chartType === 'Line') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis dataKey="period" stroke="#9CA3AF" />
@@ -46,16 +46,18 @@ const AvgPriceChart: React.FC<AvgPriceChartProps> = ({
             stroke="#9CA3AF"
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              `$${value.toFixed(2)}`,
+            formatter={(value, name) => {
+              const num = Number(value);
+              return [
+              `$${num.toFixed(2)}`,
               isInRow
                 ? 'Total Price'
                 : isByYear
                 ? selectedYears.length > 1
-                  ? `Year ${name}`
+                  ? `Year ${String(name)}`
                   : 'Avg Price'
                 : 'Avg Price',
-            ]}
+            ]}}
             contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
           />
           {isByYear ? (
@@ -90,7 +92,7 @@ const AvgPriceChart: React.FC<AvgPriceChartProps> = ({
     );
   } else if (chartType === 'Bar') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis dataKey="period" stroke="#9CA3AF" />
@@ -99,16 +101,18 @@ const AvgPriceChart: React.FC<AvgPriceChartProps> = ({
             stroke="#9CA3AF"
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              `$${value.toFixed(2)}`,
+            formatter={(value, name) => {
+              const num = Number(value);
+              return [
+              `$${num.toFixed(2)}`,
               isInRow
                 ? 'Total Price'
                 : isByYear
                 ? selectedYears.length > 1
-                  ? `Year ${name}`
+                  ? `Year ${String(name)}`
                   : 'Avg Price'
                 : 'Avg Price',
-            ]}
+            ]}}
             contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
           />
           {isByYear ? (
@@ -131,7 +135,7 @@ const AvgPriceChart: React.FC<AvgPriceChartProps> = ({
     );
   } else if (chartType === 'Area') {
     return (
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
         <AreaChart data={data}>
           <defs>
             <linearGradient
@@ -152,10 +156,10 @@ const AvgPriceChart: React.FC<AvgPriceChartProps> = ({
             stroke="#9CA3AF"
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              `$${value.toFixed(2)}`,
-              'Avg Price',
-            ]}
+            formatter={(value, name) => {
+              const num = Number(value);
+              return [`$${num.toFixed(2)}`, 'Avg Price'];
+            }}
             contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
           />
           <Area

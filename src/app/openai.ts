@@ -1,3 +1,10 @@
 import OpenAI from "openai";
 
-export const openai = new OpenAI();
+let client: OpenAI | undefined;
+
+export function getOpenAI() {
+  if (!client) {
+    client = new OpenAI();
+  }
+  return client;
+}

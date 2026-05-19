@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { convertToCoreMessages, streamText } from "ai";
+import { convertToModelMessages, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
 
 export async function POST(request: Request) {
@@ -51,16 +51,15 @@ NOTE, YOUR FIRST ANSWER MIGHT BE WRONG. Check your work twice.
 Use the addReasoningStep function for each step of your reasoning.
     `;
 
-  const result = await streamText({
+  const result = streamText({
     model: openai("gpt-4o-mini"),
     system: systemMessage,
-    messages: convertToCoreMessages(messages),
-    maxSteps: 10,
-    experimental_toolCallStreaming: true,
+    messages: await convertToModelMessages(messages),
+    stopWhen: stepCountIs(10),
     tools: {
-      addAReasoningStep: {
+      addAReasoningStep: tool({
         description: "Add a step to the reasoning process.",
-        parameters: z.object({
+        inputSchema: z.object({
           title: z.string().describe("The title of the reasoning step"),
           content: z
             .string()
@@ -74,9 +73,9 @@ Use the addReasoningStep function for each step of your reasoning.
             ),
         }),
         execute: async (params) => params,
-      },
+      }),
     },
   });
 
-  return result.toDataStreamResponse();
+  return result.toUIMessageStreamResponse();
 }
